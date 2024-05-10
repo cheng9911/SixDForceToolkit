@@ -188,9 +188,9 @@ int SixDForceTool::LoadParameterIdentification(int n)
     ZeroForceX = A(3, 0);
     ZeroForceY = A(4, 0);
     ZeroForceZ = A(5, 0);
-    ZeroTorqueRoll=k1-ZeroForceY*m_massz+ZeroForceZ*m_massy;
-    ZeroTorquePitch=k2-ZeroForceZ*m_massx+ZeroForceX*m_massz;
-    ZeroTorqueYaw=k3-ZeroForceX*m_massy+ZeroForceY*m_massx;
+    ZeroTorqueRoll = k1 - ZeroForceY * m_massz + ZeroForceZ * m_massy;
+    ZeroTorquePitch = k2 - ZeroForceZ * m_massx + ZeroForceX * m_massz;
+    ZeroTorqueYaw = k3 - ZeroForceX * m_massy + ZeroForceY * m_massx;
 
     return 0;
 }
@@ -213,6 +213,14 @@ WorldBaseOffset SixDForceTool::GetWorldBaseOffset()
 KDL::Wrench SixDForceTool::GetGravityCompensation(KDL::Rotation R, KDL::Wrench wrench_origin)
 {
     KDL::Wrench wrench_compensation;
+
+    KDL::Vector force_G = R.Inverse() * KDL::Vector(0, -0, m_mass * m_gravity);
+    KDL::Rotation cross_mass = KDL::Rotation(0, -m_massz, m_massy,
+                                             m_massz, 0, -m_massx,
+                                             -m_massy, m_massx, 0);
+
+    wrench_compensation.force = wrench_origin.force - force_G - KDL::Vector(ZeroForceX, ZeroForceY, ZeroForceZ);
+    wrench_compensation.torque = wrench_origin.torque - cross_mass * wrench_compensation.force - KDL::Vector(ZeroTorqueRoll, ZeroTorquePitch, ZeroTorqueYaw);
 
     return wrench_compensation;
 }
