@@ -4,6 +4,7 @@ project(SixDForceTool VERSION 0.1.0 LANGUAGES C CXX)
 include(CTest)
 enable_testing()
 find_library(orcos-kdl REQUIRED)
+find_package(Eigen3 REQUIRED)
 add_executable(SixDForceTool main.cpp)
 target_link_libraries(SixDForceTool orocos-kdl)
 
