@@ -29,6 +29,9 @@ struct Pose
     double roll;  // 横滚角
     double pitch; // 俯仰角
     double yaw;   // 偏航角
+    Pose(double r = 0.0, double p = 0.0, double y = 0.0)
+        : roll(r), pitch(p), yaw(y) {}
+    // 注意这里提供了默认参数，使得构造函数可以被无参数调用
 };
 
 // 定义六维力结构体
@@ -123,11 +126,11 @@ int SixDForceTool::LoadParameterIdentification(int n)
         std::cout << "poses.size() !=  || forces.size() != , 存储点位不足" << std::endl;
         return -1;
     }
-    if (n < 4)
-    {
-        std::cout << "n<4, 采样点数不足" << std::endl;
-        return -1;
-    }
+    // if (n < 4)
+    // {
+    //     std::cout << "n<4, 采样点数不足" << std::endl;
+    //     return -1;
+    // }
 
     /*
      *step1: 求解负载质心
@@ -136,14 +139,13 @@ int SixDForceTool::LoadParameterIdentification(int n)
      */
     // step1 六维力产生的力和力矩通过addData函数添加到poses和forces中
     // 求解负载质心
+
     Eigen::MatrixXd F(3 * n, 6);
     Eigen::MatrixXd M(3 * n, 1);
     Eigen::MatrixXd F_temp(3, 6);
     Eigen::MatrixXd M_temp(3, 1);
-    Eigen::MatrixXd A;
-    double k1 = A(3, 0);
-    double k2 = A(4, 0);
-    double k3 = A(5, 0);
+    Eigen::MatrixXd A(6, 1); 
+    
     // 求解负载质量，零点，世界坐标系和基座坐标系的偏移角度
     KDL::Rotation R_temp; // 存放六维力相对于基座坐标系的旋转矩阵
     for (int i = 0; i < n; i++)
@@ -158,10 +160,19 @@ int SixDForceTool::LoadParameterIdentification(int n)
     // 最小二乘法求解负载质心，（F^T*F)^-1*F^T*M
     // A=[massx,massy,massz,k1,k2,k3]
     A = (F.transpose() * F).inverse() * F.transpose() * M;
-    m_mass = A(0, 0);
-    m_massx = A(1, 0);
-    m_massy = A(2, 0);
-
+    m_massx = A(0, 0);
+    m_massy = A(1, 0);
+    m_massz = A(2, 0);
+    double k1 = A(3, 0);
+    double k2 = A(4, 0);
+    double k3 = A(5, 0);
+    std::cout<<"m_massx:"<<m_massx<<std::endl;
+    std::cout<<"m_massy:"<<m_massy<<std::endl;
+    std::cout<<"m_massz:"<<m_massz<<std::endl;
+    std::cout<<"K1"<<k1<<std::endl;
+    std::cout<<"K2"<<k2<<std::endl;
+    std::cout<<"K3"<<k3<<std::endl;
+   
     // step2 求解负载质量，零点，世界坐标系和基座坐标系的偏移角度
     // 清空F和M
     F.setZero();
@@ -171,6 +182,8 @@ int SixDForceTool::LoadParameterIdentification(int n)
     for (int i = 0; i < n; i++)
     {
         R_temp = KDL::Rotation::RPY(poses[i].roll, poses[i].pitch, poses[i].yaw);
+        R_temp=R_temp.Inverse();
+        
         F_temp << R_temp(0, 0), R_temp(0, 1), R_temp(0, 2), 1, 0, 0,
             R_temp(1, 0), R_temp(1, 1), R_temp(1, 2), 0, 1, 0,
             R_temp(2, 0), R_temp(2, 1), R_temp(2, 2), 0, 0, 1;
@@ -180,17 +193,34 @@ int SixDForceTool::LoadParameterIdentification(int n)
     }
     // 最小二乘法求解负载质量，（F^T*F)^-1*F^T*M
     // A=[Lx,Ly,Lz,ZeroForceX,ZeroForceY,ZeroForceZ]
+
     A = (F.transpose() * F).inverse() * F.transpose() * M;
+    
+    std::cout<<"F^T*F^-1:"<<(F.transpose() * F).inverse()<<std::endl;
+    std::cout<<"M"<<M<<std::endl;
+    
+    double det = (F.transpose() * F).determinant();
+
+    // 输出矩阵的行列式
+    std::cout << "The determinant of the matrix is: " << det << std::endl;
+
     double G = sqrt(A(0, 0) * A(0, 0) + A(1, 0) * A(1, 0) + A(2, 0) * A(2, 0));
+    
     m_mass = G / m_gravity;
     U = asin(-A(1, 0) / G);
-    V = asin(-A(0, 0) / A(2, 0));
+    V = atan(-A(0, 0) / A(2, 0));
     ZeroForceX = A(3, 0);
     ZeroForceY = A(4, 0);
     ZeroForceZ = A(5, 0);
     ZeroTorqueRoll = k1 - ZeroForceY * m_massz + ZeroForceZ * m_massy;
     ZeroTorquePitch = k2 - ZeroForceZ * m_massx + ZeroForceX * m_massz;
     ZeroTorqueYaw = k3 - ZeroForceX * m_massy + ZeroForceY * m_massx;
+    std::cout<<"G:"<<G/m_gravity<<std::endl;
+    std::cout<<"U:"<<U*180/M_PI<<std::endl;
+    std::cout<<"V:"<<V*180/M_PI<<std::endl;
+    std::cout<<"ZeroForceX:"<<ZeroForceX<<std::endl;
+    std::cout<<"ZeroForceY:"<<ZeroForceY<<std::endl;
+    std::cout<<"ZeroForceZ:"<<ZeroForceZ<<std::endl;
 
     return 0;
 }
