@@ -98,6 +98,7 @@ class GravityCompensation:
         R_array = self.eulerAngles2rotationMat(euler_data)
 
         alpha = (0) * 180 / np.pi
+        
 
         # 力传感器到末端的旋转矩阵
         R_alpha = np.array([[math.cos(alpha), -math.sin(alpha), 0],
@@ -106,6 +107,7 @@ class GravityCompensation:
                             ])
 
         R_array = np.dot(R_alpha, R_array.transpose())
+        print("R_array= ", R_array)
 
         if (any(self.R)):
             R_1 = hstack((R_array, np.eye(3)))
@@ -184,7 +186,7 @@ class GravityCompensation:
                         ])
 
         # 第一个角为绕X轴旋转，第二个角为绕Y轴旋转，第三个角为绕Z轴旋转
-        R = np.dot(R_x, np.dot(R_y, R_z))
+        R = np.dot(np.dot(R_z, R_y), R_x)
         return R
 
 
