@@ -25,6 +25,9 @@ struct SixDForce {
     double torque_roll;
     double torque_pitch;
     double torque_yaw;
+
+    SixDForce(double fx = 0.0, double fy = 0.0, double fz = 0.0, double tr = 0.0, double tp = 0.0, double ty = 0.0)
+        : force_x(fx), force_y(fy), force_z(fz), torque_roll(tr), torque_pitch(tp), torque_yaw(ty) {}
 };
 struct MassResult
 {
@@ -59,10 +62,8 @@ class SixDForceTool
 {
 private:
     /* data */
-    double m_mass;
-    double m_massx;
-    double m_massy;
-    double m_massz;
+    
+    
     double m_gravity = 9.8;
     double m_zero_offset_force_x = 0.0;
     double m_zero_offset_force_y = 0.0;
@@ -78,14 +79,21 @@ public:
         // 清除poses 和 forces
         poses.clear();
         forces.clear();
+        forces.resize(6);
 
         }
     ~SixDForceTool();
+    double m_mass;
+    double m_massx;
+    double m_massy;
+    double m_massz;
     std::vector<Pose> poses;
     std::vector<SixDForce> forces;
+    KDL::Wrench wrench_used;
 
 
     void addData(const Pose& pose, const SixDForce& force);
+    void addData(const SixDForce& force);
     // * @brief 负载参数辩识（质量、重心）
     // * @input param
     // * @output
@@ -113,6 +121,10 @@ void SixDForceTool::addData(const Pose& pose, const SixDForce& force)
     forces.push_back(force);
 }
 
+void SixDForceTool::addData(const SixDForce& force)
+{   
+    forces.push_back(force);
+}
 
 int SixDForceTool::LoadParameterIdentification(const KDL::Wrench &wrench, const KDL::Rotation &R)
 {
@@ -121,35 +133,26 @@ int SixDForceTool::LoadParameterIdentification(const KDL::Wrench &wrench, const 
     // 2. 重力补偿
     // 3. 传感器数据滤波
     std::cout << "LoadParameterIdentification" << std::endl;
-    if(poses.size() != 6 || forces.size() != 6)
+    if(forces.size() != 6)
     {
-        std::cout << "poses.size() != 6 || forces.size() != 6,无法进行参数辩识" << std::endl;
+        std::cout << "forces.size() != 6,无法进行参数辩识" << std::endl;
         return -1;
     }
     // 负载参数辩识公式
     MassResult massResult = GetMassAndGravity();
-    std::cout << "massResult.mass = " << massResult.mass << std::endl;
-    std::cout << "massResult.massx = " << massResult.massx << std::endl;
-    std::cout << "massResult.massy = " << massResult.massy << std::endl;
-    std::cout << "massResult.massz = " << massResult.massz << std::endl;
-
+   
     ZeroOffset zeroOffset = GetZeroOffset();
-    std::cout << "zeroOffset.zero_offset_force_x = " << zeroOffset.zero_offset_force_x << std::endl;
-    std::cout << "zeroOffset.zero_offset_force_y = " << zeroOffset.zero_offset_force_y << std::endl;
-    std::cout << "zeroOffset.zero_offset_force_z = " << zeroOffset.zero_offset_force_z << std::endl;
-    std::cout << "zeroOffset.zero_offset_torque_x = " << zeroOffset.zero_offset_torque_roll << std::endl;
-    std::cout << "zeroOffset.zero_offset_torque_y = " << zeroOffset.zero_offset_torque_pitch << std::endl;
-    std::cout << "zeroOffset.zero_offset_torque_z = " << zeroOffset.zero_offset_torque_yaw << std::endl;
+    
 
     // 重力补偿公式
-    KDL::Wrench wrench = GravityCompensation(wrench, R);
-    std::cout << "wrench.force.x = " << wrench.force.x() << std::endl;
-    std::cout << "wrench.force.y = " << wrench.force.y() << std::endl;
-    std::cout << "wrench.force.z = " << wrench.force.z() << std::endl;
+    KDL::Wrench wrench_Compensation = GravityCompensation(wrench, R);
+    
 
     // 传感器数据滤波公式
 
 
+    wrench_used = wrench_Compensation;
+    return 0;
 }
 
 
@@ -160,10 +163,10 @@ int SixDForceTool::LoadParameterIdentification(const KDL::Wrench &wrench, const 
  */
 MassResult SixDForceTool::GetMassAndGravity()
 {
-    m_mass = (forces[1].force_z - forces[0].force_z + forces[3].force_x -forces[2].force_x + forces[5].force_y - forces[4].force_y)/6;
-    m_massx = (forces[0].torque_pitch - forces[1].torque_pitch + forces[5].torque_yaw - forces[4].torque_yaw)/(4*m_mass);
-    m_massy = (forces[1].torque_roll - forces[0].torque_roll + forces[2].torque_yaw - forces[3].torque_yaw)/(4*m_mass);
-    m_massz = (forces[3].torque_pitch - forces[2].torque_pitch + forces[4].torque_roll - forces[5].torque_roll)/(4*m_mass);
+    m_mass = (forces[1].force_z - forces[0].force_z + forces[3].force_x -forces[2].force_x + forces[5].force_y - forces[4].force_y)/6.0;
+    m_massx = (forces[0].torque_pitch - forces[1].torque_pitch + forces[5].torque_yaw - forces[4].torque_yaw)/(4.0*m_mass);
+    m_massy = (forces[1].torque_roll - forces[0].torque_roll + forces[2].torque_yaw - forces[3].torque_yaw)/(4.0*m_mass);
+    m_massz = (forces[3].torque_pitch - forces[2].torque_pitch + forces[4].torque_roll - forces[5].torque_roll)/(4.0*m_mass);
    
     return MassResult(m_mass, m_massx, m_massy, m_massz);
 }
@@ -171,12 +174,15 @@ MassResult SixDForceTool::GetMassAndGravity()
 ZeroOffset SixDForceTool::GetZeroOffset()
 {
     // 计算零偏
-    m_zero_offset_force_x = (forces[2].force_x + forces[3].force_x)/2;
-    m_zero_offset_force_y = (forces[4].force_y + forces[5].force_y)/2;
-    m_zero_offset_force_z = (forces[0].force_z + forces[1].force_z)/2;
-    m_zero_offset_torque_roll = (forces[0].torque_roll + forces[1].torque_roll + forces[4].torque_roll + forces[5].torque_roll)/4;
-    m_zero_offset_torque_pitch = (forces[0].torque_pitch + forces[1].torque_pitch + forces[2].torque_pitch + forces[3].torque_pitch)/4;
-    m_zero_offset_torque_yaw = (forces[2].torque_yaw + forces[3].torque_yaw +forces[4].torque_yaw + forces[5].torque_yaw)/4;
+    m_zero_offset_force_x = (forces[2].force_x + forces[3].force_x)/2.0;
+    m_zero_offset_force_y = (forces[4].force_y + forces[5].force_y)/2.0;
+    m_zero_offset_force_z = (forces[0].force_z + forces[1].force_z)/2.0;
+    m_zero_offset_torque_roll = (forces[0].torque_roll + forces[1].torque_roll + forces[4].torque_roll + forces[5].torque_roll)/4.0;
+    m_zero_offset_torque_pitch = (forces[0].torque_pitch + forces[1].torque_pitch + forces[2].torque_pitch + forces[3].torque_pitch)/4.0;
+    m_zero_offset_torque_yaw = (forces[2].torque_yaw + forces[3].torque_yaw +forces[4].torque_yaw + forces[5].torque_yaw)/4.0;
+    // std::cout<<"m_zero_offset_force_x:"<<m_zero_offset_force_x<<std::endl;
+    // std::cout<<"m_zero_offset_force_y:"<<m_zero_offset_force_y<<std::endl;
+    // std::cout<<"m_zero_offset_force_z:"<<m_zero_offset_force_z<<std::endl;
 
     return ZeroOffset(m_zero_offset_force_x, m_zero_offset_force_y, m_zero_offset_force_z, m_zero_offset_torque_roll, m_zero_offset_torque_pitch, m_zero_offset_torque_yaw);
 }
@@ -192,17 +198,22 @@ KDL::Wrench SixDForceTool::GravityCompensation(const KDL::Wrench &wrench, const 
 {
     // 计算重力补偿
     KDL::Wrench compensated_wrench ;
-    KDL::Vector G_v = m_mass * KDL::Vector(R.data[6], R.data[7], R.data[8]);
+    //KDL::Vector G_v = -m_mass * KDL::Vector(R.data[6], R.data[7], R.data[8]);
+    KDL::Vector G_v = R.Inverse() * KDL::Vector(0,0,-m_mass);
 
-    compensated_wrench.force.data[0] = wrench.force.x() + G_v[0] - m_zero_offset_force_x;
-    compensated_wrench.force.data[1] = wrench.force.y() + G_v[1] - m_zero_offset_force_y;
-    compensated_wrench.force.data[2] = wrench.force.z() + G_v[2] - m_zero_offset_force_z;
+    // std::cout<<"G_v:"<<G_v[0]<<std::endl;
+    // std::cout<<"G_v:"<<G_v[1]<<std::endl;
+    // std::cout<<"G_v:"<<G_v[2]<<std::endl;
 
-    compensated_wrench.torque[0] = wrench.torque[0] + G_v[2] * m_massy - G_v[1] * m_massz - m_zero_offset_torque_roll;
-    compensated_wrench.torque[1] = wrench.torque[1] + G_v[0] * m_massz - G_v[2] * m_massx - m_zero_offset_torque_pitch;
-    compensated_wrench.torque[2] = wrench.torque[2] + G_v[1] * m_massx - G_v[0] * m_massy - m_zero_offset_torque_yaw;
+    compensated_wrench.force.data[0] = wrench.force.data[0] - G_v[0] - m_zero_offset_force_x;
+    compensated_wrench.force.data[1] = wrench.force.data[1] - G_v[1] - m_zero_offset_force_y;
+    compensated_wrench.force.data[2] = wrench.force.data[2] - G_v[2] - m_zero_offset_force_z;
 
-  
+    compensated_wrench.torque.data[0] = wrench.torque.data[0] - G_v[2] * m_massy + G_v[1] * m_massz - m_zero_offset_torque_roll;
+    compensated_wrench.torque.data[1] = wrench.torque.data[1] - G_v[0] * m_massz + G_v[2] * m_massx - m_zero_offset_torque_pitch;
+    compensated_wrench.torque.data[2] = wrench.torque.data[2] - G_v[1] * m_massx + G_v[0] * m_massy - m_zero_offset_torque_yaw;
+
+    wrench_used = compensated_wrench;
     return compensated_wrench;
 }
 
