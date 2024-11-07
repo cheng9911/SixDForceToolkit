@@ -3,8 +3,9 @@ project(SixDForceTool VERSION 0.1.0 LANGUAGES C CXX)
 
 include(CTest)
 enable_testing()
-find_library(orcos-kdl REQUIRED)
-find_package(Eigen3 REQUIRED)
+add_subdirectory(ThirdParty/eigen-3.4.0)
+add_subdirectory(ThirdParty/orocos_kinematics_dynamics-1.5.1/orocos_kdl)
+
 add_executable(SixDForceTool main.cpp)
 target_link_libraries(SixDForceTool orocos-kdl)
 

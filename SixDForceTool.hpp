@@ -1,8 +1,8 @@
 
 // * @brief SixDForceTool类功能函数：
-// *1. 负载参数辩识（质量、重心）   四点标定，四个姿态，四个六维力的平均值
-// *2. 重力补偿
-// *3. 传感器数据滤波
+// *1. 负载参数辩识（质量、重心）   最少 四点标定，四个姿态，四个六维力的平均值
+// *2. https://blog.csdn.net/shuimujieming/article/details/137015352?ops_request_misc=%257B%2522request%255Fid%2522%253A%2522171505339516800211589180%2522%252C%2522scm%2522%253A%252220140713.130102334..%2522%257D&request_id=171505339516800211589180&biz_id=0&utm_medium=distribute.pc_search_result.none-task-blog-2~all~sobaiduend~default-1-137015352-null-null.142^v100^pc_search_result_base9&utm_term=%E5%85%AD%E7%BB%B4%E5%8A%9B%E4%BC%A0%E6%84%9F%E5%99%A8%E8%A1%A5%E5%81%BF&spm=1018.2226.3001.4187
+
 #ifndef SIXDFORCETOOL_HPP
 #define SIXDFORCETOOL_HPP
 
@@ -23,7 +23,7 @@ struct WorldBaseOffset
         : U(u), V(v) {}
 };
 
-// ! 定义姿态结构体，默认是RPY角，是六维力相对于基座坐标系的姿态，即六维力的旋转角度,不是法兰盘的旋转角度
+// ! 定义姿态结构体，默认是RPY角，是六维力相对于基座坐标系的姿态，即六维力的旋转,不是法兰盘的旋转
 struct Pose
 {
     double roll;  // 横滚角
@@ -91,7 +91,6 @@ public:
     void addData(const Pose &pose, const SixDForce &force);
     // 零漂移校准
     void ZeroDriftCalibration();
-
     // * @brief 负载参数辩识（质量、重心）
     // * @input param n 采样点数（对应的姿态和六维力的点数）
     // * @output
@@ -103,7 +102,6 @@ public:
     MassResult GetMassAndGravity();
     SixDForce GetZeroDriftCalibration();
     WorldBaseOffset GetWorldBaseOffset();
-    KDL::Wrench GetGravityCompensation(KDL::Rotation R, KDL::Wrench wrench_origin);
 };
 
 SixDForceTool::~SixDForceTool()
@@ -119,19 +117,13 @@ void SixDForceTool::addData(const Pose &pose, const SixDForce &force)
 int SixDForceTool::LoadParameterIdentification(int n)
 {
     // 1. 负载参数辩识（质量、重心）
-    // 四点标定，四个姿态，四个六维力的平均值
+    // 最小四点标定，四个姿态，四个六维力的平均值
 
     if (poses.size() != n || forces.size() != n)
     {
         std::cout << "poses.size() !=  || forces.size() != , 存储点位不足" << std::endl;
         return -1;
     }
-    // if (n < 4)
-    // {
-    //     std::cout << "n<4, 采样点数不足" << std::endl;
-    //     return -1;
-    // }
-
     /*
      *step1: 求解负载质心
      *step2: 求解负载质量，零点，世界坐标系和基座坐标系的偏移角度
@@ -169,12 +161,6 @@ int SixDForceTool::LoadParameterIdentification(int n)
     double k1 = A(3, 0);
     double k2 = A(4, 0);
     double k3 = A(5, 0);
-    // std::cout << "m_massx:" << m_massx << std::endl;
-    // std::cout << "m_massy:" << m_massy << std::endl;
-    // std::cout << "m_massz:" << m_massz << std::endl;
-    // std::cout << "K1" << k1 << std::endl;
-    // std::cout << "K2" << k2 << std::endl;
-    // std::cout << "K3" << k3 << std::endl;
 
     // step2 求解负载质量，零点，世界坐标系和基座坐标系的偏移角度
     // 清空F和M
@@ -199,22 +185,14 @@ int SixDForceTool::LoadParameterIdentification(int n)
 
     A = (F.transpose() * F).inverse() * F.transpose() * M;
 
-    // SVD
-    // Eigen::MatrixXd x = F.bdcSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(M);
-    // std::cout<< x << std::endl;
-    // A= x;
-    // 最小二乘法求解的误差
-   
-    error = (F * A - M).norm();
+    error = (F * A - M).norm()/6;
     // 输出最小二乘法求解的误差
     std::cout << "质量，零漂的误差: " << error << std::endl;
     double det = (F.transpose() * F).determinant();
-
     // 输出矩阵的行列式
     std::cout << "The determinant of the matrix is: " << det << std::endl;
     
     double G = sqrt(A(0, 0) * A(0, 0) + A(1, 0) * A(1, 0) + A(2, 0) * A(2, 0));
-
     m_mass = G / m_gravity;
     U = asin(-A(1, 0) / G);
     V = atan(-A(0, 0) / A(2, 0));
@@ -249,19 +227,6 @@ WorldBaseOffset SixDForceTool::GetWorldBaseOffset()
 {
     return WorldBaseOffset(U, V);
 }
-KDL::Wrench SixDForceTool::GetGravityCompensation(KDL::Rotation R, KDL::Wrench wrench_origin)
-{
-    KDL::Wrench wrench_compensation;
 
-    KDL::Vector force_G = R.Inverse() * KDL::Vector(0, -0, m_mass * m_gravity);
-    KDL::Rotation cross_mass = KDL::Rotation(0, -m_massz, m_massy,
-                                             m_massz, 0, -m_massx,
-                                             -m_massy, m_massx, 0);
-
-    wrench_compensation.force = wrench_origin.force - force_G - KDL::Vector(ZeroForceX, ZeroForceY, ZeroForceZ);
-    wrench_compensation.torque = wrench_origin.torque - cross_mass * wrench_compensation.force - KDL::Vector(ZeroTorqueRoll, ZeroTorquePitch, ZeroTorqueYaw);
-
-    return wrench_compensation;
-}
 
 #endif // SIXDFORCETOOL_HPP
