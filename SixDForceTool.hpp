@@ -66,7 +66,7 @@ private:
     double m_massx;
     double m_massy;
     double m_massz;
-    double m_gravity = 9.8;
+    double m_gravity = 9.81;
     double ZeroForceX = 0.0;
     double ZeroForceY = 0.0;
     double ZeroForceZ = 0.0;
@@ -102,6 +102,7 @@ public:
     MassResult GetMassAndGravity();
     SixDForce GetZeroDriftCalibration();
     WorldBaseOffset GetWorldBaseOffset();
+    KDL::Wrench GetGravityCompensation(KDL::Rotation R, KDL::Wrench wrench_origin);
 };
 
 SixDForceTool::~SixDForceTool()
@@ -119,7 +120,7 @@ int SixDForceTool::LoadParameterIdentification(int n)
     // 1. 负载参数辩识（质量、重心）
     // 最小四点标定，四个姿态，四个六维力的平均值
 
-    if (poses.size() != n || forces.size() != n)
+    if (poses.size() < n || forces.size() < n || n<3)
     {
         std::cout << "poses.size() !=  || forces.size() != , 存储点位不足" << std::endl;
         return -1;
@@ -161,6 +162,8 @@ int SixDForceTool::LoadParameterIdentification(int n)
     double k1 = A(3, 0);
     double k2 = A(4, 0);
     double k3 = A(5, 0);
+    std::cout << "massx: " << m_massx << ", massy: " << m_massy << ", massz: " << m_massz << std::endl;
+    std::cout << "k1: " << k1 << ", k2: " << k2 << ", k3: " << k3 << std::endl;
 
     // step2 求解负载质量，零点，世界坐标系和基座坐标系的偏移角度
     // 清空F和M
@@ -171,6 +174,9 @@ int SixDForceTool::LoadParameterIdentification(int n)
     for (int i = 0; i < n; i++)
     {
         R_temp = KDL::Rotation::RPY(poses[i].roll, poses[i].pitch, poses[i].yaw);
+        // 打印
+        // std::cout << "R_temp: " << R_temp(0, 0) << "," << R_temp(0, 1) << "," << R_temp(0, 2) <<"\n"<< R_temp(1, 0) << "," << R_temp(1, 1) << "," << R_temp(1, 2) <<"\n"<< R_temp(2, 0) << "," << R_temp(2, 1) << "," << R_temp(2, 2) << std::endl;
+        
         R_temp = R_temp.Inverse();
 
         F_temp << R_temp(0, 0), R_temp(0, 1), R_temp(0, 2), 1, 0, 0,
@@ -184,7 +190,7 @@ int SixDForceTool::LoadParameterIdentification(int n)
     // A=[Lx,Ly,Lz,ZeroForceX,ZeroForceY,ZeroForceZ]
 
     A = (F.transpose() * F).inverse() * F.transpose() * M;
-
+    std::cout<<"A:"<<A(0,0)<<","<<A(1,0)<<","<<A(2,0)<<","<<A(3,0)<<","<<A(4,0)<<","<<A(5,0)<<std::endl;
     error = (F * A - M).norm()/6;
     // 输出最小二乘法求解的误差
     std::cout << "质量，零漂的误差: " << error << std::endl;
@@ -226,6 +232,21 @@ SixDForce SixDForceTool::GetZeroDriftCalibration()
 WorldBaseOffset SixDForceTool::GetWorldBaseOffset()
 {
     return WorldBaseOffset(U, V);
+}
+
+KDL::Wrench SixDForceTool::GetGravityCompensation(KDL::Rotation R, KDL::Wrench wrench_origin)
+{
+    KDL::Wrench wrench_compensation;
+
+    KDL::Vector force_G = R.Inverse() * KDL::Vector(0, -0, m_mass * m_gravity);
+    KDL::Rotation cross_mass = KDL::Rotation(0, -m_massz, m_massy,
+                                             m_massz, 0, -m_massx,
+                                             -m_massy, m_massx, 0);
+
+    wrench_compensation.force = wrench_origin.force - force_G - KDL::Vector(ZeroForceX, ZeroForceY, ZeroForceZ);
+    wrench_compensation.torque = wrench_origin.torque - cross_mass * wrench_compensation.force - KDL::Vector(ZeroTorqueRoll, ZeroTorquePitch, ZeroTorqueYaw);
+
+    return wrench_compensation;
 }
 
 
