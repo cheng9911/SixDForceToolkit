@@ -68,7 +68,7 @@ int SixDForceTool::LoadParameterIdentification(int n)
     // 1. 负载参数辩识（质量、重心）
     // 最小四点标定，四个姿态，四个六维力的平均值
 
-    if (poses.size() != n || forces.size() != n)
+    if (poses.size() < n || forces.size() < n)
     {
         std::cout << "poses.size() !=  || forces.size() != , 存储点位不足" << std::endl;
         return -1;
