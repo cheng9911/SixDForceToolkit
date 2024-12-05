@@ -61,18 +61,22 @@ int main(int, char**){
     }
    
 
-
     sixDForceTool->forces = sixDForce;
     sixDForceTool->poses = poses;
-
    
-
 
     sixDForceTool->LoadParameterIdentification(n);
    
     auto massResult =sixDForceTool->GetMassAndGravity();
     std::cout << "mass: " << massResult.mass << ", massx: " << massResult.massx << ", massy: " << massResult.massy << ", massz: " << massResult.massz << std::endl;
-   
+    //重力补偿,以最后一个点为例
+    sixDForceTool->SetMass(0.485311,0.000948132,0.0238941,0.00639493);
+    sixDForceTool->SetZeroOffset(6.44782,2.1205,-8.09139,-0.124308,-0.153269,0.184636);
+    KDL::Wrench wrench_origin(KDL::Vector( 8.174,-1.498,-10.696), // 力
+                          KDL::Vector(-0.147,-0.141,0.133)); // 力矩
+    KDL::Rotation R = KDL::Rotation::RotX(degToRad(63.434))*KDL::Rotation::RotY(degToRad(-14.478))*KDL::Rotation::RotZ(degToRad(146.567));
+    KDL::Wrench wrench_output=sixDForceTool->GetForceGravityCompensation(R*f_TCP,wrench_origin);
+    std::cout<<"wrench_output: "<<wrench_output.force(0)<<","<<wrench_output.force(1)<<","<<wrench_output.force(2)<<","<<wrench_output.torque(0)<<","<<wrench_output.torque(1)<<","<<wrench_output.torque(2)<<std::endl;
 
     return 0;
 
